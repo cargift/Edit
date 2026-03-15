@@ -869,7 +869,7 @@ function makeEditable(root){
   const SELS=[
     'h1','h2','h3','p','button',
     '.letter-box','.letter-long','.gift-message','.gift-reveal',
-    '.small-note','#letterContent','#typingText','#giftMessage','#letterLong',
+    '.small-note','#letterContent','#typingText','#typeText','#giftMessage','#letterLong',
     '.cap','.mem-note',
     // adventure
     '.pixel-title','.pixel-sub','.choice','.gift-label',
@@ -1065,167 +1065,134 @@ function collectHTML(){
   const cfg=TPLS[curTpl];
   const content=document.getElementById('tplContent');
 
-  // 1) Start from raw HTML
+  // Start from raw HTML
   let html=rawHTMLs[curTpl];
 
-  // 2) Apply title from modal
+  // ── STEP 1: TITLE ──
   const title=document.getElementById('titleInput').value.trim();
   if(title) html=replaceAll(html,'[TITLE]',title);
 
-  // 3) Apply photos with actual filenames
-  cfg.photos.forEach(s=>{
-    const d=photoStore[s.key];
-    html=replaceAll(html,s.ph,d?d.filename:s.def);
-  });
+  // ── STEP 2: GRAB ALL EDITED TEXT FROM DOM ──
+  // Do this BEFORE any replacements so we get the actual edited values
+  const edits={};
 
-  // 4) Apply specials
-  cfg.specials.forEach(s=>{
-    const val=specialVals[s.key]||s.def;
-    html=replaceAll(html,s.ph,val);
-  });
+  // [NAME]
+  const nameSelMap={birthday1:'#friendName1',birthday2:'#friendName1',bucin2:'#p1name'};
+  const nameEl=content.querySelector(nameSelMap[curTpl]||'#friendName1');
+  if(nameEl){const t=nameEl.textContent.trim();if(t)edits['[NAME]']=t;}
 
-  // 5) For adventure: apply edited name from DOM
-  if(curTpl==='adventure'){
-    const nameEl=content.querySelector('#userName');
-    const editedName=nameEl?nameEl.textContent.trim():'Carter';
-    html=replaceAll(html,'[NAME]',editedName);
+  // [LETTER] - birthday1
+  if(curTpl==='birthday1'){
+    const el=content.querySelector('#letterContent');
+    if(el){const t=(el.innerText||el.textContent||'').trim();if(t)edits['[LETTER]']=t;}
   }
 
-  // 6) Patch JS constants — they override DOM on page load so must also be replaced
-  // Bucin1: patch PUZZLE_IMAGE JS constant directly
+  // [LETTER] - birthday2 typewriter (in #typingText span)
+  if(curTpl==='birthday2'){
+    const el=content.querySelector('#typingText');
+    if(el){const t=(el.innerText||el.textContent||'').trim();if(t&&t!=='[LETTER]')edits['[LETTER]']=t;}
+  }
+
+  // [LETTER_TEXT] - bucin1
   if(curTpl==='bucin1'){
-    const pzData=photoStore['bp3'];
-    if(pzData) html=replaceAll(html,'[PUZZLE_IMAGE]',pzData.filename);
-    const thumbData=photoStore['bp1'];
-    const bigData=photoStore['bp2'];
-    if(thumbData) html=replaceAll(html,'[PHOTO_PAGE1]',thumbData.filename);
-    if(bigData)   html=replaceAll(html,'[PHOTO_PAGE2]',bigData.filename);
+    const el=content.querySelector('#letterLong');
+    if(el){const t=(el.innerText||el.textContent||'').trim();if(t)edits['[LETTER_TEXT]']=t;}
   }
 
-  // Bucin2: patch WHEEL_PHOTO1 JS constant
+  // [LETTER_TEXT] - bucin2
   if(curTpl==='bucin2'){
-    const wheelData=photoStore['bw1'];
-    if(wheelData) html=replaceAll(html,'[WHEEL_PHOTO1]',wheelData.filename);
-  }
-  const content2=document.getElementById('tplContent');
-  const jsPatches={};
-
-  // ── Per-template explicit DOM extraction ──
-  // Based on audit: each template has specific elements
-
-  // [NAME] — birthday1/birthday2: #friendName1, bucin2: #p1name
-  const _nameMap={
-    birthday1:'#friendName1', birthday2:'#friendName1',
-    bucin2:'#p1name'
-  };
-  const _nameSel=_nameMap[curTpl]||'#friendName1';
-  const _nameEl=content2.querySelector(_nameSel);
-  if(_nameEl){
-    const t=_nameEl.textContent.trim();
-    if(t&&t!=='[NAME]') jsPatches['[NAME]']=t;
-  }
-  // Fallback: try .name or .name-hl
-  if(!jsPatches['[NAME]']){
-    const _nameEl2=content2.querySelector('.name,.name-hl,.friend-name');
-    if(_nameEl2){
-      const t=_nameEl2.textContent.trim();
-      if(t&&t!=='[NAME]') jsPatches['[NAME]']=t;
-    }
+    const el=content.querySelector('#typeText');
+    if(el){const t=(el.innerText||el.textContent||'').trim();if(t&&t!=='[LETTER_TEXT]')edits['[LETTER_TEXT]']=t;}
   }
 
-  // [LETTER] — birthday1: #letterContent, birthday2: JS only (FULL_LETTER)
-  if(curTpl==='birthday1'||curTpl==='birthday2'){
-    const _lc=content2.querySelector('#letterContent');
-    if(_lc){
-      const t=(_lc.innerText||_lc.textContent||'').trim();
-      if(t&&t!=='[LETTER]') jsPatches['[LETTER]']=t;
-    }
-  }
-
-  // [LETTER_TEXT] — bucin1: #letterLong, bucin2: .letter-box
-  if(curTpl==='bucin1'){
-    const _ll=content2.querySelector('#letterLong');
-    if(_ll){
-      const t=(_ll.innerText||_ll.textContent||'').trim();
-      if(t&&t!=='[LETTER_TEXT]') jsPatches['[LETTER_TEXT]']=t;
-    }
-  }
-  if(curTpl==='bucin2'){
-    // bucin2 letter is in .letter-box (the typewriter container)
-    const _lb=content2.querySelector('.letter-box');
-    if(_lb){
-      const t=(_lb.innerText||_lb.textContent||'').trim();
-      if(t&&t!=='[LETTER_TEXT]') jsPatches['[LETTER_TEXT]']=t;
-    }
-  }
-
-  // birthday2 gift messages — from specialVals
+  // birthday2 gift messages
   ['letter1','letter2','letter3'].forEach((k,i)=>{
-    if(specialVals[k]) jsPatches['[LETTER'+(i+1)+']']=specialVals[k];
+    if(specialVals[k]) edits['[LETTER'+(i+1)+']']=specialVals[k];
   });
 
   // bucin1 passcode
-  if(specialVals['passcode']) jsPatches['[PASSCODE]']=specialVals['passcode'];
+  if(specialVals['passcode']) edits['[PASSCODE]']=specialVals['passcode'];
 
   // bucin2 spotify
-  if(specialVals['spotify']) jsPatches['[SPOTIFY]']=specialVals['spotify'];
+  if(specialVals['spotify']) edits['[SPOTIFY]']=specialVals['spotify'];
 
-  // Apply ALL patches — this replaces in both HTML tags AND JS script constants
-  Object.entries(jsPatches).forEach(([ph,val])=>{
-    if(val&&val.trim()){
-      html=replaceAll(html, ph, val.replace(/`/g,"'"));
-    }
+  // ── STEP 3: APPLY ALL EDITS TO RAW HTML (covers HTML + JS constants) ──
+  Object.entries(edits).forEach(([ph,val])=>{
+    if(val&&val.trim()) html=replaceAll(html,ph,val.replace(/`/g,"'"));
   });
 
-  // 7) Parse and do DOM-based text patching
+  // ── STEP 4: PHOTOS — use filenames for upload, def for untouched ──
+  // Photos are assigned by POSITION for same-default photos (memory photos)
+  const photoCfg=cfg.photos;
+
+  // For bucin2 memory photos: assign by DOM order in .photo-item
+  if(curTpl==='bucin2'){
+    const memSlots=['bm1','bm2','bm3','bm4'];
+    const memPhs=['[MEMORY_PHOTO1]','[MEMORY_PHOTO2]','[MEMORY_PHOTO3]','[MEMORY_PHOTO4]'];
+    memSlots.forEach((key,i)=>{
+      const d=photoStore[key];
+      html=replaceAll(html,memPhs[i],d?d.filename:photoCfg.find(s=>s.key===key).def);
+    });
+    // wheel photo
+    const wd=photoStore['bw1'];
+    html=replaceAll(html,'[WHEEL_PHOTO1]',wd?wd.filename:'https://files.catbox.moe/7kuaxg.jpg');
+    // remaining placeholders already handled above
+  } else {
+    // For all other templates: replace by photo config
+    photoCfg.forEach(s=>{
+      const d=photoStore[s.key];
+      html=replaceAll(html,s.ph,d?d.filename:s.def);
+    });
+  }
+
+  // Bucin1 special: puzzle image in JS constant
+  if(curTpl==='bucin1'){
+    const pz=photoStore['bp3'];
+    if(pz) html=replaceAll(html,'[PUZZLE_IMAGE]',pz.filename);
+  }
+
+  // ── STEP 5: DOM TEXT PATCHING ──
+  // For any remaining [data-editable] elements not covered above
   const parser=new DOMParser();
   const origDoc=parser.parseFromString(html,'text/html');
 
-  // 7b) For each editable element in live DOM, find matching in origDoc and patch
   content.querySelectorAll('[data-editable]').forEach(liveEl=>{
-    const cleanInner=liveEl.innerHTML
+    const clean=liveEl.innerHTML
       .replace(/ contenteditable="true"/g,'')
       .replace(/ data-editable=""/g,'')
       .replace(/ spellcheck="false"/g,'')
       .replace(/ style="cursor: pointer;"/g,'')
       .replace(/ style="cursor:pointer"/g,'');
 
-    // Try to find matching element — by id first, then by unique selector
     let target=null;
     if(liveEl.id) target=origDoc.getElementById(liveEl.id);
-
     if(!target){
-      // Build selector from tag + classes (filtered)
       const tag=liveEl.tagName.toLowerCase();
-      const cls=[...liveEl.classList].filter(c=>!['blue-template'].includes(c));
-      // Try with class
+      const cls=[...liveEl.classList].filter(c=>c!=='blue-template');
       if(cls.length){
         try{
           const matches=origDoc.querySelectorAll(tag+'.'+cls[0]);
-          if(matches.length===1) target=matches[0];
+          if(matches.length===1){target=matches[0];}
           else if(matches.length>1){
-            // Find which index this is among same-class elements in live DOM
-            const liveMatches=[...content.querySelectorAll(tag+'.'+cls[0])];
-            const idx=liveMatches.indexOf(liveEl);
+            const liveAll=[...content.querySelectorAll(tag+'.'+cls[0])];
+            const idx=liveAll.indexOf(liveEl);
             if(idx>=0&&matches[idx]) target=matches[idx];
           }
         }catch(e){}
       }
-      // Try without class
       if(!target){
         try{
-          const matches=origDoc.querySelectorAll(tag);
-          const liveMatches=[...content.querySelectorAll(tag)];
-          const idx=liveMatches.indexOf(liveEl);
-          if(idx>=0&&matches[idx]) target=matches[idx];
+          const all=origDoc.querySelectorAll(tag);
+          const liveAll=[...content.querySelectorAll(tag)];
+          const idx=liveAll.indexOf(liveEl);
+          if(idx>=0&&all[idx]) target=all[idx];
         }catch(e){}
       }
     }
-
-    if(target) target.innerHTML=cleanInner;
+    if(target) target.innerHTML=clean;
   });
 
-  // 7) Restore page visibility (remove editor's display:none)
+  // ── STEP 6: RESTORE PAGE VISIBILITY ──
   origDoc.querySelectorAll('.page,.scene').forEach(p=>{
     p.style.removeProperty('display');
     p.classList.remove('active');
@@ -1235,7 +1202,7 @@ function collectHTML(){
     if(first) first.classList.add('active');
   }
 
-  // 8) Clean editor artifacts
+  // ── STEP 7: CLEAN EDITOR ARTIFACTS ──
   origDoc.querySelectorAll('[data-editable],[data-img-key]').forEach(el=>{
     el.removeAttribute('data-editable');
     el.removeAttribute('contenteditable');
@@ -1247,8 +1214,6 @@ function collectHTML(){
   return '<!DOCTYPE html>\n'+origDoc.documentElement.outerHTML;
 }
 
-// ══════════════════════════════════════════════════
-// MODAL
 // ══════════════════════════════════════════════════
 function openModal(){
   if(building) return;
