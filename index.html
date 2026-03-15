@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Website Maker 🎀</title>
+<title>Website Maker</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Chewy&family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <style>
@@ -903,43 +903,52 @@ function makeEditable(root){
   }
 
   // Images → tap to replace
-  // Pre-assign known IDs for templates with ambiguous srcs
+  // Use explicit per-template assignment by position/ID, never by src
+  // (src-based matching breaks when multiple photos share the same default URL)
+
+  // Step 1: Pre-assign by known element IDs
   const knownIds={
-    'thumbImg':'bp1',   // bucin1 passcode photo
-    'bigPhoto':'bp2',   // bucin1 letter photo
+    'thumbImg':'bp1',  // bucin1 passcode
+    'bigPhoto':'bp2',  // bucin1 letter
   };
-  root.querySelectorAll('img').forEach(img=>{
-    const cfg=TPLS[curTpl];
-    let key=img.getAttribute('data-img-key');
-    // Assign by known element ID first
-    if(!key&&img.id&&knownIds[img.id]) key=knownIds[img.id];
-    if(!key){
-      const src=img.getAttribute('src')||'';
-      // Only match if stored dataUrl matches exactly
-      for(const s of cfg.photos){
-        const stored=photoStore[s.key];
-        if(stored&&src===stored.dataUrl){key=s.key;break;}
-      }
-      // Default src matching only if photos have DIFFERENT defaults
-      if(!key){
-        for(const s of cfg.photos){
-          if(!photoStore[s.key]&&src===s.def&&s.def!==cfg.photos[0]?.def){key=s.key;break;}
-        }
-      }
-      // Last resort: assign to first unclaimed slot (skip puzzle slots that have dedicated UI)
-      if(!key&&cfg.photos.length>0){
-        const skipKeys=new Set(['bp3','bw1']); // puzzle & wheel handled separately
-        const claimed=new Set([...root.querySelectorAll('img[data-img-key]')].map(i=>i.getAttribute('data-img-key')));
-        for(const s of cfg.photos){
-          if(!claimed.has(s.key)&&!skipKeys.has(s.key)){key=s.key;break;}
-        }
-      }
+  root.querySelectorAll('img[id]').forEach(img=>{
+    const k=knownIds[img.id];
+    if(k) img.setAttribute('data-img-key',k);
+  });
+
+  // Step 2: bucin2 memory photos — assign by index in .photo-item
+  if(curTpl==='bucin2'){
+    const memKeys=['bm1','bm2','bm3','bm4'];
+    root.querySelectorAll('.photo-item img').forEach((img,i)=>{
+      if(i<4) img.setAttribute('data-img-key',memKeys[i]);
+    });
+  }
+
+  // Step 3: birthday1 photos — already assigned in renderB1Photos()
+
+  // Step 4: puzzle photos — already have data-img-key from renderBucin1Puzzle/renderBucin2Wheel
+
+  // Step 5: All remaining unassigned imgs — assign by slot order (skip already-handled keys)
+  const skipKeys=new Set(['bp3','bw1','bm1','bm2','bm3','bm4']);
+  const handled=new Set([...root.querySelectorAll('img[data-img-key]')].map(i=>i.getAttribute('data-img-key')));
+  const cfg=TPLS[curTpl];
+  const remaining=cfg.photos.filter(s=>!skipKeys.has(s.key)&&!handled.has(s.key));
+  let ri=0;
+  root.querySelectorAll('img:not([data-img-key])').forEach(img=>{
+    if(ri<remaining.length){
+      img.setAttribute('data-img-key',remaining[ri].key);
+      ri++;
     }
-    if(key){
-      img.setAttribute('data-img-key',key);
-      img.style.cursor='pointer';
-      img.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();pickPhoto(key,img);});
-    }
+  });
+
+  // Step 6: Add click handlers to ALL assigned images
+  root.querySelectorAll('img[data-img-key]').forEach(img=>{
+    const key=img.getAttribute('data-img-key');
+    // Update src if we already have stored data for this key
+    const stored=photoStore[key];
+    if(stored) img.src=stored.dataUrl;
+    img.style.cursor='pointer';
+    img.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();pickPhoto(key,img);});
   });
 
   root.querySelectorAll('a').forEach(a=>a.addEventListener('click',e=>e.preventDefault()));
@@ -1045,12 +1054,9 @@ function onFilePicked(e){
     const key=pickTarget.key;
     photoStore[key]={dataUrl:url,blob:file,filename:`images/${key}_${Date.now()}.${ext}`};
 
-    // Update ALL images with this key in current DOM
-    const content=document.getElementById('tplContent');
-    content.querySelectorAll(`img[data-img-key="${key}"]`).forEach(img=>img.src=url);
+    // Update ONLY the specific image that was tapped
     if(pickTarget.imgEl) pickTarget.imgEl.src=url;
 
-    // Refresh right panel if needed
     toast('✓ Foto berhasil diganti! 📸');
   };
   reader.readAsDataURL(file);
