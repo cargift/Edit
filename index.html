@@ -320,7 +320,7 @@ img[data-img-key]:hover{opacity:.85;outline:3px solid rgba(246,166,187,.7);outli
 <!-- ═══ SCREEN 1: TEMPLATE PICKER ═══ -->
 <div class="screen active" id="screen-pick">
   <div class="pick-header">
-    <span class="logo">✨ webot</span>
+    <span class="logo">Cargift</span>
     <h1>Pilih Template</h1>
     <p>Tap template buat mulai edit!</p>
   </div>
@@ -1108,33 +1108,38 @@ function collectHTML(){
     if(wheelData) html=replaceAll(html,'[WHEEL_PHOTO1]',wheelData.filename);
   }
   const content2=document.getElementById('tplContent');
-
-  // Grab edited values from live DOM
   const jsPatches={};
 
-  // [NAME] — from any name span
-  const nameEl2=content2.querySelector('#friendName1,.name,.name-hl,.friend-name');
-  if(nameEl2) jsPatches['[NAME]']=nameEl2.textContent.trim();
+  // [NAME] — try all possible selectors across templates
+  const _nameSels=['#friendName1','#friendName2','#p1name','.name','.name-hl','.friend-name'];
+  for(const sel of _nameSels){
+    try{
+      const el=content2.querySelector(sel);
+      if(el){const t=el.textContent.trim();if(t&&t!=='[NAME]'){jsPatches['[NAME]']=t;break;}}
+    }catch(e){}
+  }
 
   // [LETTER] — birthday1/birthday2
-  const letterEl=content2.querySelector('#letterContent');
-  if(letterEl) jsPatches['[LETTER]']=letterEl.innerText||letterEl.textContent||'';
+  const _lc=content2.querySelector('#letterContent');
+  if(_lc){const t=(_lc.innerText||_lc.textContent||'').trim();if(t&&t!=='[LETTER]')jsPatches['[LETTER]']=t;}
 
-  // [LETTER_TEXT] — bucin1/bucin2
-  const letterLongEl=content2.querySelector('#letterLong');
-  if(letterLongEl) jsPatches['[LETTER_TEXT]']=letterLongEl.innerText||letterLongEl.textContent||'';
+  // [LETTER_TEXT] — bucin1 (#letterLong), bucin2 (.letter-box)
+  const _ll=content2.querySelector('#letterLong');
+  if(_ll){const t=(_ll.innerText||_ll.textContent||'').trim();if(t&&t!=='[LETTER_TEXT]')jsPatches['[LETTER_TEXT]']=t;}
+  if(!jsPatches['[LETTER_TEXT]']){
+    const _lb=content2.querySelector('.letter-box');
+    if(_lb){const t=(_lb.innerText||_lb.textContent||'').trim();if(t&&t!=='[LETTER_TEXT]')jsPatches['[LETTER_TEXT]']=t;}
+  }
 
   // From specialVals
-  ['letter1','letter2','letter3'].forEach((k,i)=>{
-    if(specialVals[k]) jsPatches['[LETTER'+(i+1)+']']=specialVals[k];
-  });
-  if(specialVals['passcode']) jsPatches['[PASSCODE]']=specialVals['passcode'];
-  if(specialVals['spotify'])  jsPatches['[SPOTIFY]']=specialVals['spotify'];
+  ['letter1','letter2','letter3'].forEach((k,i)=>{if(specialVals[k])jsPatches['[LETTER'+(i+1)+']']=specialVals[k];});
+  if(specialVals['passcode'])jsPatches['[PASSCODE]']=specialVals['passcode'];
+  if(specialVals['spotify'])jsPatches['[SPOTIFY]']=specialVals['spotify'];
 
-  // Apply all JS patches to raw html (covers both HTML and script tags)
+  // Apply patches — covers BOTH html elements AND js constants in script tags
   Object.entries(jsPatches).forEach(([ph,val])=>{
     if(val&&val.trim()){
-      const safe=val.replace(/`/g,"'").replace(/\\/g,'\\');
+      const safe=val.replace(/`/g,"'");
       html=replaceAll(html,ph,safe);
     }
   });
