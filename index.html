@@ -320,7 +320,7 @@ img[data-img-key]:hover{opacity:.85;outline:3px solid rgba(246,166,187,.7);outli
 <!-- ═══ SCREEN 1: TEMPLATE PICKER ═══ -->
 <div class="screen active" id="screen-pick">
   <div class="pick-header">
-    <span class="logo">Cargift</span>
+    <span class="logo">✨ webot</span>
     <h1>Pilih Template</h1>
     <p>Tap template buat mulai edit!</p>
   </div>
@@ -492,6 +492,24 @@ const TG_USER=(function(){
   }catch(e){}
   return {display:'None',id:'None',name:'None'};
 })();
+
+// ══════════════════════════════════════════════════
+// SPOTIFY URL CONVERTER
+// ══════════════════════════════════════════════════
+function convertSpotifyEmbed(url){
+  // Already embed format
+  if(url.includes('/embed/')) return url;
+  // Extract type and id from any spotify URL
+  // Handles: open.spotify.com/track/ID, /playlist/ID, /album/ID, /artist/ID, /episode/ID
+  const match=url.match(/spotify\.com\/(?:intl-[a-z]+\/)?([a-z]+)\/([a-zA-Z0-9]+)/);
+  if(match){
+    const type=match[1]; // track, playlist, album, artist, episode
+    const id=match[2];
+    return `https://open.spotify.com/embed/${type}/${id}?utm_source=generator&theme=0`;
+  }
+  // If can't parse, return as-is
+  return url;
+}
 
 // ══════════════════════════════════════════════════
 // TEMPLATE CONFIG
@@ -703,6 +721,9 @@ function renderEditor(){
   // Bucin1: inject visible puzzle img placeholder so user can tap to replace
   if(curTpl==='bucin1') renderBucin1Puzzle(content);
 
+  // Bucin2: inject tappable photo over wheel canvas
+  if(curTpl==='bucin2') renderBucin2Wheel(content);
+
   showPage(curPage);
   makeEditable(content);
   injectSpecialsPanel(cfg);
@@ -762,6 +783,43 @@ function renderBucin1Puzzle(content){
 
   // Make tappable
   img.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();pickPhoto('bp3',img);});
+}
+
+// ══════════════════════════════════════════════════
+// BUCIN2 — inject tappable photo over wheel canvas
+// ══════════════════════════════════════════════════
+function renderBucin2Wheel(content){
+  const wheelWrap=content.querySelector('.wheel-wrap');
+  if(!wheelWrap) return;
+
+  // Remove existing preview
+  const existing=wheelWrap.querySelector('.wheel-preview-img');
+  if(existing) existing.remove();
+
+  const d=photoStore['bw1'];
+  const url=d?d.dataUrl:'https://files.catbox.moe/7kuaxg.jpg';
+
+  const wrap=document.createElement('div');
+  wrap.style.cssText='position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;z-index:10;pointer-events:all;';
+
+  const img=document.createElement('img');
+  img.src=url;
+  img.setAttribute('data-img-key','bw1');
+  img.className='wheel-preview-img';
+  img.style.cssText='width:90px;height:90px;object-fit:cover;border-radius:50%;border:4px solid var(--b1);box-shadow:0 4px 0 var(--b3);cursor:pointer;display:block;margin:0 auto 6px;';
+
+  const lbl=document.createElement('div');
+  lbl.style.cssText='font-family:Chewy,cursive;font-size:.8rem;color:var(--b1);background:rgba(255,255,255,.9);border-radius:20px;padding:2px 10px;';
+  lbl.textContent='📸 tap ganti foto';
+
+  wrap.appendChild(img);
+  wrap.appendChild(lbl);
+  wheelWrap.appendChild(wrap);
+
+  img.addEventListener('click',e=>{
+    e.preventDefault();e.stopPropagation();
+    pickPhoto('bw1',img);
+  });
 }
 
 // ══════════════════════════════════════════════════
@@ -870,7 +928,7 @@ function makeEditable(root){
       }
       // Last resort: assign to first unclaimed slot (skip puzzle slots that have dedicated UI)
       if(!key&&cfg.photos.length>0){
-        const skipKeys=new Set(['bp3']); // puzzle handled separately
+        const skipKeys=new Set(['bp3','bw1']); // puzzle & wheel handled separately
         const claimed=new Set([...root.querySelectorAll('img[data-img-key]')].map(i=>i.getAttribute('data-img-key')));
         for(const s of cfg.photos){
           if(!claimed.has(s.key)&&!skipKeys.has(s.key)){key=s.key;break;}
@@ -940,8 +998,12 @@ function openSpecialInput(s,isBlue,triggerBtn){
   saveBtn.style.cssText=`margin-top:10px;width:100%;padding:10px;border-radius:14px;border:none;background:${isBlue?'var(--blue)':'var(--pink)'};color:white;font-family:'Nunito',sans-serif;font-weight:800;font-size:.85rem;cursor:pointer;`;
   saveBtn.textContent='Simpan ✓';
   saveBtn.onclick=()=>{
-    const val=inp.value.trim();
+    let val=inp.value.trim();
     if(val){
+      // Auto-convert Spotify link to embed format
+      if(s.key==='spotify' && val.includes('spotify.com')){
+        val=convertSpotifyEmbed(val);
+      }
       specialVals[s.key]=val;
       triggerBtn.innerHTML=`<span>${s.label}</span><span>✓</span>`;
       toast('✓ '+s.label+' disimpan!');
@@ -1034,11 +1096,16 @@ function collectHTML(){
   if(curTpl==='bucin1'){
     const pzData=photoStore['bp3'];
     if(pzData) html=replaceAll(html,'[PUZZLE_IMAGE]',pzData.filename);
-    // Also patch photo IDs by element
     const thumbData=photoStore['bp1'];
     const bigData=photoStore['bp2'];
     if(thumbData) html=replaceAll(html,'[PHOTO_PAGE1]',thumbData.filename);
     if(bigData)   html=replaceAll(html,'[PHOTO_PAGE2]',bigData.filename);
+  }
+
+  // Bucin2: patch WHEEL_PHOTO1 JS constant
+  if(curTpl==='bucin2'){
+    const wheelData=photoStore['bw1'];
+    if(wheelData) html=replaceAll(html,'[WHEEL_PHOTO1]',wheelData.filename);
   }
   const content2=document.getElementById('tplContent');
 
@@ -1314,3 +1381,4 @@ function toast(msg){
 </script>
 </body>
 </html>
+
