@@ -1110,37 +1110,70 @@ function collectHTML(){
   const content2=document.getElementById('tplContent');
   const jsPatches={};
 
-  // [NAME] — try all possible selectors across templates
-  const _nameSels=['#friendName1','#friendName2','#p1name','.name','.name-hl','.friend-name'];
-  for(const sel of _nameSels){
-    try{
-      const el=content2.querySelector(sel);
-      if(el){const t=el.textContent.trim();if(t&&t!=='[NAME]'){jsPatches['[NAME]']=t;break;}}
-    }catch(e){}
+  // ── Per-template explicit DOM extraction ──
+  // Based on audit: each template has specific elements
+
+  // [NAME] — birthday1/birthday2: #friendName1, bucin2: #p1name
+  const _nameMap={
+    birthday1:'#friendName1', birthday2:'#friendName1',
+    bucin2:'#p1name'
+  };
+  const _nameSel=_nameMap[curTpl]||'#friendName1';
+  const _nameEl=content2.querySelector(_nameSel);
+  if(_nameEl){
+    const t=_nameEl.textContent.trim();
+    if(t&&t!=='[NAME]') jsPatches['[NAME]']=t;
+  }
+  // Fallback: try .name or .name-hl
+  if(!jsPatches['[NAME]']){
+    const _nameEl2=content2.querySelector('.name,.name-hl,.friend-name');
+    if(_nameEl2){
+      const t=_nameEl2.textContent.trim();
+      if(t&&t!=='[NAME]') jsPatches['[NAME]']=t;
+    }
   }
 
-  // [LETTER] — birthday1/birthday2
-  const _lc=content2.querySelector('#letterContent');
-  if(_lc){const t=(_lc.innerText||_lc.textContent||'').trim();if(t&&t!=='[LETTER]')jsPatches['[LETTER]']=t;}
+  // [LETTER] — birthday1: #letterContent, birthday2: JS only (FULL_LETTER)
+  if(curTpl==='birthday1'||curTpl==='birthday2'){
+    const _lc=content2.querySelector('#letterContent');
+    if(_lc){
+      const t=(_lc.innerText||_lc.textContent||'').trim();
+      if(t&&t!=='[LETTER]') jsPatches['[LETTER]']=t;
+    }
+  }
 
-  // [LETTER_TEXT] — bucin1 (#letterLong), bucin2 (.letter-box)
-  const _ll=content2.querySelector('#letterLong');
-  if(_ll){const t=(_ll.innerText||_ll.textContent||'').trim();if(t&&t!=='[LETTER_TEXT]')jsPatches['[LETTER_TEXT]']=t;}
-  if(!jsPatches['[LETTER_TEXT]']){
+  // [LETTER_TEXT] — bucin1: #letterLong, bucin2: .letter-box
+  if(curTpl==='bucin1'){
+    const _ll=content2.querySelector('#letterLong');
+    if(_ll){
+      const t=(_ll.innerText||_ll.textContent||'').trim();
+      if(t&&t!=='[LETTER_TEXT]') jsPatches['[LETTER_TEXT]']=t;
+    }
+  }
+  if(curTpl==='bucin2'){
+    // bucin2 letter is in .letter-box (the typewriter container)
     const _lb=content2.querySelector('.letter-box');
-    if(_lb){const t=(_lb.innerText||_lb.textContent||'').trim();if(t&&t!=='[LETTER_TEXT]')jsPatches['[LETTER_TEXT]']=t;}
+    if(_lb){
+      const t=(_lb.innerText||_lb.textContent||'').trim();
+      if(t&&t!=='[LETTER_TEXT]') jsPatches['[LETTER_TEXT]']=t;
+    }
   }
 
-  // From specialVals
-  ['letter1','letter2','letter3'].forEach((k,i)=>{if(specialVals[k])jsPatches['[LETTER'+(i+1)+']']=specialVals[k];});
-  if(specialVals['passcode'])jsPatches['[PASSCODE]']=specialVals['passcode'];
-  if(specialVals['spotify'])jsPatches['[SPOTIFY]']=specialVals['spotify'];
+  // birthday2 gift messages — from specialVals
+  ['letter1','letter2','letter3'].forEach((k,i)=>{
+    if(specialVals[k]) jsPatches['[LETTER'+(i+1)+']']=specialVals[k];
+  });
 
-  // Apply patches — covers BOTH html elements AND js constants in script tags
+  // bucin1 passcode
+  if(specialVals['passcode']) jsPatches['[PASSCODE]']=specialVals['passcode'];
+
+  // bucin2 spotify
+  if(specialVals['spotify']) jsPatches['[SPOTIFY]']=specialVals['spotify'];
+
+  // Apply ALL patches — this replaces in both HTML tags AND JS script constants
   Object.entries(jsPatches).forEach(([ph,val])=>{
     if(val&&val.trim()){
-      const safe=val.replace(/`/g,"'");
-      html=replaceAll(html,ph,safe);
+      html=replaceAll(html, ph, val.replace(/`/g,"'"));
     }
   });
 
