@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Website Maker</title>
+<title>Website Maker 🎀</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Chewy&family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -473,17 +474,24 @@ const GH_USER = "cargift";
 const WORKER  = "https://cargift.ahmadadrian737.workers.dev";
 
 // Telegram Mini App user
-function getTGUser(){
+const TG_USER=(function(){
   try{
     const tg=window.Telegram&&window.Telegram.WebApp;
-    if(tg&&tg.initDataUnsafe&&tg.initDataUnsafe.user){
-      const u=tg.initDataUnsafe.user;
-      return {display:u.username?'@'+u.username:(u.first_name||'Unknown'),id:u.id};
+    if(tg){
+      tg.ready();  // must call ready() first
+      tg.expand(); // expand to full screen
+      const u=tg.initDataUnsafe&&tg.initDataUnsafe.user;
+      if(u){
+        return {
+          display:u.username?'@'+u.username:(u.first_name||'Unknown'),
+          id:u.id,
+          name:[u.first_name,u.last_name].filter(Boolean).join(' ')
+        };
+      }
     }
   }catch(e){}
-  return {display:'None',id:'None'};
-}
-const TG_USER=getTGUser();
+  return {display:'None',id:'None',name:'None'};
+})();
 
 // ══════════════════════════════════════════════════
 // TEMPLATE CONFIG
@@ -692,6 +700,9 @@ function renderEditor(){
   // Birthday1: manually render photos
   if(curTpl==='birthday1') renderB1Photos(content);
 
+  // Bucin1: inject visible puzzle img placeholder so user can tap to replace
+  if(curTpl==='bucin1') renderBucin1Puzzle(content);
+
   showPage(curPage);
   makeEditable(content);
   injectSpecialsPanel(cfg);
@@ -717,6 +728,40 @@ function renderB1Photos(content){
     const cap=document.createElement('p');cap.className='cap';cap.textContent=caps[i]||'📸';
     pol.appendChild(img);pol.appendChild(cap);grid.appendChild(pol);
   });
+}
+
+// ══════════════════════════════════════════════════
+// BUCIN1 — inject puzzle preview image
+// ══════════════════════════════════════════════════
+function renderBucin1Puzzle(content){
+  const board=content.querySelector('#puzzleBoard');
+  if(!board) return;
+  // Remove any existing preview
+  const existing=board.querySelector('.puzzle-preview-img');
+  if(existing) existing.remove();
+
+  const d=photoStore['bp3'];
+  const url=d?d.dataUrl:'https://files.catbox.moe/qv6b1o.jpg';
+
+  const wrap=document.createElement('div');
+  wrap.style.cssText='position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;z-index:5;pointer-events:all;';
+
+  const img=document.createElement('img');
+  img.src=url;
+  img.setAttribute('data-img-key','bp3');
+  img.className='puzzle-preview-img';
+  img.style.cssText='width:120px;height:120px;object-fit:cover;border-radius:12px;border:3px solid var(--c5);box-shadow:0 4px 0 var(--c4);cursor:pointer;display:block;margin:0 auto 8px;';
+
+  const lbl=document.createElement('div');
+  lbl.style.cssText='font-family:Chewy,cursive;font-size:.9rem;color:var(--c5);';
+  lbl.textContent='📸 tap ganti foto puzzle';
+
+  wrap.appendChild(img);
+  wrap.appendChild(lbl);
+  board.appendChild(wrap);
+
+  // Make tappable
+  img.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();pickPhoto('bp3',img);});
 }
 
 // ══════════════════════════════════════════════════
@@ -800,19 +845,36 @@ function makeEditable(root){
   }
 
   // Images → tap to replace
+  // Pre-assign known IDs for templates with ambiguous srcs
+  const knownIds={
+    'thumbImg':'bp1',   // bucin1 passcode photo
+    'bigPhoto':'bp2',   // bucin1 letter photo
+  };
   root.querySelectorAll('img').forEach(img=>{
     const cfg=TPLS[curTpl];
     let key=img.getAttribute('data-img-key');
+    // Assign by known element ID first
+    if(!key&&img.id&&knownIds[img.id]) key=knownIds[img.id];
     if(!key){
       const src=img.getAttribute('src')||'';
+      // Only match if stored dataUrl matches exactly
       for(const s of cfg.photos){
         const stored=photoStore[s.key];
-        if((stored&&src===stored.dataUrl)||src===s.def){key=s.key;break;}
+        if(stored&&src===stored.dataUrl){key=s.key;break;}
       }
-      // fallback: assign by order
+      // Default src matching only if photos have DIFFERENT defaults
+      if(!key){
+        for(const s of cfg.photos){
+          if(!photoStore[s.key]&&src===s.def&&s.def!==cfg.photos[0]?.def){key=s.key;break;}
+        }
+      }
+      // Last resort: assign to first unclaimed slot (skip puzzle slots that have dedicated UI)
       if(!key&&cfg.photos.length>0){
+        const skipKeys=new Set(['bp3']); // puzzle handled separately
         const claimed=new Set([...root.querySelectorAll('img[data-img-key]')].map(i=>i.getAttribute('data-img-key')));
-        for(const s of cfg.photos){if(!claimed.has(s.key)){key=s.key;break;}}
+        for(const s of cfg.photos){
+          if(!claimed.has(s.key)&&!skipKeys.has(s.key)){key=s.key;break;}
+        }
       }
     }
     if(key){
@@ -968,6 +1030,16 @@ function collectHTML(){
   }
 
   // 6) Patch JS constants — they override DOM on page load so must also be replaced
+  // Bucin1: patch PUZZLE_IMAGE JS constant directly
+  if(curTpl==='bucin1'){
+    const pzData=photoStore['bp3'];
+    if(pzData) html=replaceAll(html,'[PUZZLE_IMAGE]',pzData.filename);
+    // Also patch photo IDs by element
+    const thumbData=photoStore['bp1'];
+    const bigData=photoStore['bp2'];
+    if(thumbData) html=replaceAll(html,'[PHOTO_PAGE1]',thumbData.filename);
+    if(bigData)   html=replaceAll(html,'[PHOTO_PAGE2]',bigData.filename);
+  }
   const content2=document.getElementById('tplContent');
 
   // Grab edited values from live DOM
@@ -1242,4 +1314,3 @@ function toast(msg){
 </script>
 </body>
 </html>
-
