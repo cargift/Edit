@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Website Maker 🎀</title>
+<title>Website Maker</title>
 <link href="https://fonts.googleapis.com/css2?family=Chewy&family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -319,7 +319,7 @@ img[data-img-key]:hover{opacity:.85;outline:3px solid rgba(246,166,187,.7);outli
 <!-- ═══ SCREEN 1: TEMPLATE PICKER ═══ -->
 <div class="screen active" id="screen-pick">
   <div class="pick-header">
-    <span class="logo">✨ webot</span>
+    <span class="logo">Cargift</span>
     <h1>Pilih Template</h1>
     <p>Tap template buat mulai edit!</p>
   </div>
@@ -454,7 +454,8 @@ img[data-img-key]:hover{opacity:.85;outline:3px solid rgba(246,166,187,.7);outli
       <div class="done-msg">Website berhasil dibuat!</div>
       <div class="done-note">Tunggu 1–2 menit biar aktif ya ✨</div>
       <a class="done-link" id="doneLink" href="#" target="_blank" style="margin-bottom:8px;display:block">–</a>
-      <button class="btn-confirm" onclick="copyLink()" style="background:var(--muted);box-shadow:none;font-size:.85rem;padding:10px">📋 Copy Link</button>
+      <button class="btn-confirm" onclick="copyLink()" style="background:var(--muted);box-shadow:none;font-size:.85rem;padding:10px;margin-bottom:8px">📋 Copy Link</button>
+      <button class="btn-confirm" onclick="backFromBuild()" style="background:white;color:var(--text);border:2px solid var(--pink3);box-shadow:none;font-size:.85rem;padding:10px">← Buat Lagi</button>
     </div>
   </div>
 </div>
@@ -550,9 +551,7 @@ const TPLS={
     pages:["Intro","Q1","Q2","Q3","Q4","Big Q","Thanks","Letter","Gifts","Maze","Ending"],
     pageIds:["s1","s2","s3","s4","s5","s6","s7","s8","s9","s10","s11"],
     photos:[],
-    specials:[
-      {key:"adv_letter",ph:"[LETTER_TEXT]",label:"Isi Letter 💌",def:"dear [NAME],\n\ni made this just for you~\nthank you for being you.\n\nwith love 💗",isTextarea:true}
-    ]
+    specials:[]
   }
 };
 
@@ -673,9 +672,22 @@ function renderEditor(){
     if(n.nodeName!=='SCRIPT') content.appendChild(document.importNode(n,true));
   });
 
-  // Adventure: hide loading screen that was injected
+  // Adventure: hide loading screen, inject pixel font
   const advLoading=content.querySelector('#loading');
   if(advLoading) advLoading.style.display='none';
+  if(curTpl==='adventure'){
+    // Inject Press Start 2P font if not already loaded
+    if(!document.getElementById('pixelFont')){
+      const lk=document.createElement('link');
+      lk.id='pixelFont';lk.rel='stylesheet';
+      lk.href='https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap';
+      document.head.appendChild(lk);
+    }
+    // Also inject pixel font CSS override into content
+    const pxStyle=document.createElement('style');
+    pxStyle.textContent="*{font-family:'Press Start 2P',cursive!important}";
+    content.insertBefore(pxStyle,content.firstChild);
+  }
 
   // Birthday1: manually render photos
   if(curTpl==='birthday1') renderB1Photos(content);
@@ -758,6 +770,7 @@ function makeEditable(root){
     '.cap','.mem-note',
     // adventure
     '.pixel-title','.pixel-sub','.choice','.gift-label',
+    '#letterBox','.letter-content',
   ];
   SELS.forEach(sel=>{
     try{
@@ -1184,12 +1197,18 @@ function setP(pct,txt){
 function copyLink(){
   if(!builtUrl) return;
   navigator.clipboard.writeText(builtUrl).then(()=>toast('✓ Link di-copy!')).catch(()=>{
-    // Fallback
     const inp=document.createElement('input');
     inp.value=builtUrl;document.body.appendChild(inp);
     inp.select();document.execCommand('copy');inp.remove();
     toast('✓ Link di-copy!');
   });
+}
+
+function backFromBuild(){
+  building=false;
+  builtUrl='';
+  closeModal();
+  goBack();
 }
 
 // ══════════════════════════════════════════════════
